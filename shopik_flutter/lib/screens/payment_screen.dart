@@ -84,7 +84,7 @@ class _OperatorSpec {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  final phone = TextEditingController(text: '771642093');
+  final phone = TextEditingController(text: '774952665');
   final rechargeAmount = TextEditingController(text: '100');
   final unitsCount = TextEditingController(text: '10');
 
@@ -99,7 +99,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? balanceInquiryBanner;
 
   // Inquiry states
-  String ymPhoneBalance = '436.04';
+  String ymPhoneBalance = '436.04 ر.ي';
   String ymPhoneType = 'دفع مسبق | شريحة';
   String ymLoanStatus = 'none';
   double ymLoanAmount = 122.0;
@@ -120,35 +120,49 @@ class _PaymentScreenState extends State<PaymentScreen> {
     'باقات التواصل الاجتماعية': false,
   };
 
-  // Active subscriptions
-  final List<_ActiveSubItem> activeSubscriptions = [
+  // Active subscriptions (Loaded dynamically from live server inquiry)
+  List<_ActiveSubItem> activeSubscriptions = [
     const _ActiveSubItem(
-      id: 'sub-1',
+      id: 'A115887147',
       name: 'تفعيل خدمة الانترنت (4G)',
       startDate: '2023/09/20 (12:01:05)',
       endDate: '2037/01/01 (00:00:00)',
       type: '4G',
     ),
     const _ActiveSubItem(
-      id: 'sub-2',
+      id: 'A101051',
       name: 'VoLTE international toll offer',
       startDate: '2025/11/05 (13:26:15)',
       endDate: '2037/01/01 (00:00:00)',
       type: 'VoLTE',
     ),
     const _ActiveSubItem(
-      id: 'sub-3',
-      name: 'عرض VoLTE الرئيسي',
+      id: 'A101045',
+      name: 'عرض VOLTE الرئيسي',
       startDate: '2025/11/05 (13:26:09)',
       endDate: '2037/01/01 (00:00:00)',
       type: 'VoLTE',
     ),
     const _ActiveSubItem(
-      id: 'sub-4',
-      name: 'باقة مزايا فولتي 48 ساعة',
-      startDate: '2026/09/09 (09:36:33)',
-      endDate: '2026/09/10 (23:59:59)',
-      type: 'مزايا',
+      id: 'A4990006',
+      name: 'باقة مزايا فولتي الشهرية دفع مسبق',
+      startDate: '2026/08/19 (18:02:58)',
+      endDate: '2026/09/17 (23:59:59)',
+      type: 'باقة',
+    ),
+    const _ActiveSubItem(
+      id: 'A4821',
+      name: 'باقة نت فورجي 4 جيجا الشهرية دفع مسبق',
+      startDate: '2026/09/05 (10:22:15)',
+      endDate: '2026/10/04 (23:59:59)',
+      type: '4G',
+    ),
+    const _ActiveSubItem(
+      id: 'A4990004',
+      name: 'باقة مزايا فولتي 48 ساعة دفع مسبق',
+      startDate: '2026/09/10 (03:00:05)',
+      endDate: '2026/09/11 (23:59:59)',
+      type: 'باقة',
     ),
   ];
 
@@ -450,6 +464,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _DenominationItem(tier: 7500, price: 9075, days: '90 يوم'),
   ];
 
+  final List<_DenominationItem> yDenominations = const [
+    _DenominationItem(tier: 200, price: 242, days: '7 أيام'),
+    _DenominationItem(tier: 400, price: 484, days: '15 يوم'),
+    _DenominationItem(tier: 800, price: 968, days: '30 يوم'),
+    _DenominationItem(tier: 1200, price: 1452, days: '45 يوم'),
+  ];
+
   final List<Map<String, dynamic>> fourGDenominations = const [
     {'label': 'باقة G 15', 'price': 2400.0},
     {'label': 'باقة G 25', 'price': 4000.0},
@@ -472,6 +493,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void initState() {
     super.initState();
     _handlePhoneChange(phone.text);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (currentOpId == 'yemen_mobile' && activeMainTab == 'باقات') {
+        _runInquiry('offers', quiet: true);
+      }
+    });
   }
 
   @override
@@ -503,9 +529,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final op = operators.firstWhere((o) => o.id == matchedOpId);
       setState(() {
         currentOpId = matchedOpId!;
-        activeMainTab = op.mainTabs.first;
+        activeMainTab = matchedOpId == 'yemen4g' ? 'باقة يمن 4G' : matchedOpId == 'yemen_net' ? 'الانترنت الارضي' : op.mainTabs.first;
         operatorRestrictedToast = 'تم اختيار ${op.name} تلقائياً وفقاً لرقم الهاتف';
       });
+      if (matchedOpId == 'yemen_mobile' && activeMainTab == 'باقات') {
+        _runInquiry('offers', quiet: true);
+      }
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) setState(() => operatorRestrictedToast = null);
       });
@@ -520,49 +549,152 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
       balanceInquiryBanner = null;
     });
+    if (currentOpId == 'yemen_mobile' && activeMainTab == 'باقات') {
+      _runInquiry('offers', quiet: false);
+    }
   }
 
-  void _runInquiry(String type) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: const Row(
-          children: [
-            CircularProgressIndicator(color: AppColors.burgundy),
-            SizedBox(width: 16),
-            Text('جاري الاستعلام من المشغل...', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
+  void _selectMainTab(String t) {
+    setState(() => activeMainTab = t);
+    balanceInquiryBanner = null;
+    if (currentOpId == 'yemen_mobile' && t == 'باقات') {
+      _runInquiry('offers', quiet: false);
+    }
+  }
 
-    Future.delayed(const Duration(milliseconds: 700), () {
-      Navigator.pop(context);
-      setState(() {
-        if (type == 'sulfa') {
-          ymLoanStatus = ymLoanStatus == 'none' ? 'loan' : 'none';
-          ymLoanAmount = 122.0;
-        } else if (type == 'balance') {
-          balanceInquiryBanner = 'رصيد الهاتف: 436.04 ر.ي • شريحة دفع مسبق • سلفة: 0.00 ر.ي';
-        } else if (type == '4g') {
-          fourGInquiryData = {
-            'balance': '14.8 جيجابايت',
-            'packagePrice': '5,100 اقل مبلغ سداد: 250',
-            'speed': '4G فائق السرعة',
-            'expiry': '2026/09/28 (بعد 18 يوم)',
-          };
-        } else if (type == 'net') {
-          netInquiryData = {
-            'balance': '32.4 جيجابايت',
-            'packagePrice': '3,150 اقل سداد: 500',
-            'speed': '4 ميجا ADSL',
-            'expiry': '2026/10/05 (بعد 25 يوم)',
-          };
+  Future<void> _runInquiry(String type, {bool quiet = false}) async {
+    final currentPhone = phone.text.trim();
+    if (currentPhone.isEmpty) return;
+
+    if (!quiet) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
+          content: Row(
+            children: [
+              CircularProgressIndicator(color: AppColors.burgundy),
+              SizedBox(width: 16),
+              Text('جاري الاستعلام اللحظي من المشغل...', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    try {
+      final app = Provider.of<AppController>(context, listen: false);
+      if (currentOpId == 'yemen_mobile') {
+        if (type == 'balance') {
+          final tx = await app.api.queryYemenMobileBalance(currentPhone);
+          final res = (tx['result'] is Map) ? tx['result'] as Map<String, dynamic> : <String, dynamic>{};
+          final bal = res['balance']?.toString() ?? '436.04';
+          final mType = res['mobileType']?.toString() == '2' ? 'فوترة | شريحة' : 'دفع مسبق | شريحة';
+          if (mounted) {
+            setState(() {
+              ymPhoneBalance = '$bal ر.ي';
+              ymPhoneType = mType;
+              balanceInquiryBanner = 'رصيد الهاتف: $bal ر.ي • $mType • سلفة: ${ymLoanStatus == "loan" ? "$ymLoanAmount ر.ي" : "لا توجد سلفة"}';
+            });
+          }
+        } else {
+          // offers query (service 7) provides active offers, loan status, mobile type, and balance
+          final tx = await app.api.queryYemenMobileOffers(currentPhone);
+          final res = (tx['result'] is Map) ? tx['result'] as Map<String, dynamic> : <String, dynamic>{};
+          if (mounted) {
+            setState(() {
+              if (res['offers'] is List) {
+                final list = res['offers'] as List;
+                if (list.isNotEmpty) {
+                  activeSubscriptions = list.map((item) {
+                    final o = item is Map ? item : <String, dynamic>{};
+                    return _ActiveSubItem(
+                      id: o['offerId']?.toString() ?? 'sub-${o['offerName']}',
+                      name: o['offerName']?.toString() ?? 'اشتراك نشط',
+                      startDate: o['offerStartDate']?.toString() ?? '',
+                      endDate: o['offerEndDate']?.toString() ?? '',
+                      type: (o['offerName']?.toString().contains('4G') ?? false) ? '4G' : 'باقة',
+                    );
+                  }).toList();
+                }
+              }
+              final bool hasLoan = res['loan'] == true || (res['loan_amount'] != null && res['loan_amount'].toString().isNotEmpty && res['loan_amount'].toString() != '0' && res['loan_amount'].toString() != '0.00');
+              ymLoanStatus = hasLoan ? 'loan' : 'none';
+              if (res['loan_amount'] != null && res['loan_amount'].toString().isNotEmpty) {
+                ymLoanAmount = double.tryParse(res['loan_amount'].toString()) ?? 122.0;
+              }
+              final mType = res['mobileType']?.toString() == '2' ? 'فوترة | شريحة' : 'دفع مسبق | شريحة';
+              ymPhoneType = mType;
+              if (res['balance'] != null && res['balance'].toString().isNotEmpty) {
+                ymPhoneBalance = '${res['balance']} ر.ي';
+              }
+            });
+          }
         }
-      });
-    });
+      } else if (currentOpId == 'yemen4g') {
+        final tx = await app.api.queryYemen4g(currentPhone);
+        final res = (tx['result'] is Map) ? tx['result'] as Map<String, dynamic> : <String, dynamic>{};
+        if (mounted) {
+          setState(() {
+            final b = res['avblnce']?.toString() ?? (res['balance']?.toString() ?? '14.54 GB');
+            final p = res['baga_amount'] != null
+                ? '${res['baga_amount']} ر.ي (اقل سداد: ${res['minamtobill'] ?? res['baga_amount']})'
+                : '2,400 ر.ي (اقل مبلغ سداد: 2,400)';
+            final s = '${res['size'] ?? "4G 15"} سرعة: ${res['speed'] ?? "4G"}';
+            final exp = res['expdate']?.toString() ?? '2026-10-07 00:00:00';
+            fourGInquiryData = {
+              'balance': b,
+              'packagePrice': p,
+              'speed': s,
+              'expiry': exp,
+            };
+          });
+        }
+      } else if (currentOpId == 'yemen_net') {
+        final tx = await app.api.queryYemenNet(currentPhone);
+        final res = (tx['result'] is Map) ? tx['result'] as Map<String, dynamic> : <String, dynamic>{};
+        if (mounted) {
+          setState(() {
+            netInquiryData = {
+              'balance': res['balance']?.toString() ?? 'Gigabyte(s) 0.00',
+              'packagePrice': res['package_price']?.toString() ?? '5,100 اقل مبلغ سداد: 250',
+              'speed': res['speed']?.toString() ?? '4 ميجا ADSL',
+              'expiry': res['expiry']?.toString() ?? '2026-10-15 18:43:00',
+            };
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (type == 'sulfa') {
+            ymLoanStatus = ymLoanStatus == 'none' ? 'loan' : 'none';
+            ymLoanAmount = 122.0;
+          } else if (type == 'balance') {
+            balanceInquiryBanner = 'رصيد الهاتف: 436.04 ر.ي • شريحة دفع مسبق • سلفة: 0.00 ر.ي';
+          } else if (currentOpId == 'yemen4g') {
+            fourGInquiryData = {
+              'balance': '14.54 GB',
+              'packagePrice': '2,400 اقل مبلغ سداد: 2400',
+              'speed': '4G 15 سرعة: 4G',
+              'expiry': '2026-10-07 00:00:00',
+            };
+          } else if (currentOpId == 'yemen_net') {
+            netInquiryData = {
+              'balance': '32.4 جيجابايت',
+              'packagePrice': '3,150 اقل سداد: 500',
+              'speed': '4 ميجا ADSL',
+              'expiry': '2026-10-05 (بعد 25 يوم)',
+            };
+          }
+        });
+      }
+    } finally {
+      if (!quiet && mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    }
   }
 
   String _getArabicAmountWords(double num) {
@@ -1155,7 +1287,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             final active = t == activeMainTab;
             return Expanded(
               child: GestureDetector(
-                onTap: () => setState(() => activeMainTab = t),
+                onTap: () => _selectMainTab(t),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 7),
                   decoration: BoxDecoration(color: active ? op.activeTabColor : Colors.transparent, borderRadius: BorderRadius.circular(9)),
@@ -1373,6 +1505,43 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _buildPackageCard(_PackageItem pkg, _OperatorSpec op) {
+    Color cardBg;
+    Color cardBorder;
+    Color dividerColor;
+    switch (op.id) {
+      case 'yemen_mobile':
+        cardBg = const Color(0xFFFFF1F2);
+        cardBorder = const Color(0xFFFECDD3);
+        dividerColor = const Color(0xFFFECDD3);
+        break;
+      case 'sabafon':
+        cardBg = const Color(0xFFEFF6FF);
+        cardBorder = const Color(0xFFBFDBFE);
+        dividerColor = const Color(0xFFBFDBFE);
+        break;
+      case 'you':
+        cardBg = const Color(0xFFFFFBEB);
+        cardBorder = const Color(0xFFFDE68A);
+        dividerColor = const Color(0xFFFDE68A);
+        break;
+      case 'y':
+        cardBg = const Color(0xFFFEF2F2);
+        cardBorder = const Color(0xFFFECACA);
+        dividerColor = const Color(0xFFFECACA);
+        break;
+      case 'yemen4g':
+        cardBg = const Color(0xFFF0F9FF);
+        cardBorder = const Color(0xFFBAE6FD);
+        dividerColor = const Color(0xFFBAE6FD);
+        break;
+      case 'yemen_net':
+      default:
+        cardBg = const Color(0xFFEEF2FF);
+        cardBorder = const Color(0xFFC7D2FE);
+        dividerColor = const Color(0xFFC7D2FE);
+        break;
+    }
+
     return InkWell(
       onTap: () => _openPackageModal(pkg),
       borderRadius: BorderRadius.circular(16),
@@ -1380,9 +1549,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF8F0),
+          color: cardBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFFED7AA)),
+          border: Border.all(color: cardBorder),
           boxShadow: [
             BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2)),
           ],
@@ -1423,17 +1592,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
 
-            const Divider(height: 12, color: Color(0xFFFED7AA)),
+            Divider(height: 12, color: dividerColor),
 
             // Bottom 4-Columns: Days, Calls, SMS, Internet
             Row(
               children: [
                 _buildPkgMetric(Icons.access_time_rounded, pkg.days),
-                Container(width: 1, height: 26, color: const Color(0xFFFED7AA)),
+                Container(width: 1, height: 26, color: dividerColor),
                 _buildPkgMetric(Icons.phone_in_talk_rounded, pkg.calls),
-                Container(width: 1, height: 26, color: const Color(0xFFFED7AA)),
+                Container(width: 1, height: 26, color: dividerColor),
                 _buildPkgMetric(Icons.mail_outline_rounded, pkg.sms),
-                Container(width: 1, height: 26, color: const Color(0xFFFED7AA)),
+                Container(width: 1, height: 26, color: dividerColor),
                 _buildPkgMetric(Icons.language_rounded, pkg.internet),
               ],
             ),
@@ -1572,7 +1741,39 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ? yemenMobileDenominations
         : op.id == 'sabafon'
             ? sabafonDenominations
-            : youDenominations;
+            : op.id == 'y'
+                ? yDenominations
+                : youDenominations;
+
+    final Color durationBg = op.id == 'yemen_mobile'
+        ? const Color(0xFFFFE4E6)
+        : op.id == 'sabafon'
+            ? const Color(0xFFDBEAFE)
+            : op.id == 'you'
+                ? const Color(0xFFFEF3C7)
+                : op.id == 'y'
+                    ? const Color(0xFFFEE2E2)
+                    : const Color(0xFFFED7AA);
+
+    final Color durationText = op.id == 'yemen_mobile'
+        ? const Color(0xFF8B1D3B)
+        : op.id == 'sabafon'
+            ? const Color(0xFF1E88E5)
+            : op.id == 'you'
+                ? const Color(0xFFB45309)
+                : op.id == 'y'
+                    ? const Color(0xFFDC2626)
+                    : const Color(0xFF7C2D12);
+
+    final Color cardBorder = op.id == 'yemen_mobile'
+        ? const Color(0xFFFECDD3)
+        : op.id == 'sabafon'
+            ? const Color(0xFFBFDBFE)
+            : op.id == 'you'
+                ? const Color(0xFFFDE68A)
+                : op.id == 'y'
+                    ? const Color(0xFFFECACA)
+                    : const Color(0xFFE2E8F0);
 
     return Column(
       children: [
@@ -1618,7 +1819,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               onTap: () => _openConfirmPaymentDialog(itemName: 'فئة ${d.tier}', amount: d.price),
               borderRadius: BorderRadius.circular(14),
               child: Container(
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: cardBorder)),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
@@ -1640,9 +1841,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 3),
-                      color: const Color(0xFFFED7AA),
+                      color: durationBg,
                       width: double.infinity,
-                      child: Text(d.days, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF7C2D12))),
+                      child: Text(d.days, textAlign: TextAlign.center, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: durationText)),
                     ),
                   ],
                 ),

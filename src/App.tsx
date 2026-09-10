@@ -161,7 +161,7 @@ interface ActiveSubscription {
 }
 
 export default function App() {
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("774952665");
   const [currentOp, setCurrentOp] = useState<Operator>(OPERATORS[0]);
   const [activeMainTab, setActiveMainTab] = useState<string>("باقات"); // 'رصيد' | 'فوري' | 'باقات' | 'جملة' | 'ريال'
   const [subFilter, setSubFilter] = useState<string>("دفع مسبق"); // 'دفع مسبق' | 'فوترة' | 'شريحة' | 'برمجة' | '4G'
@@ -486,6 +486,11 @@ export default function App() {
       // Default operator is Yemen Mobile
       setCurrentOp(OPERATORS.find((o) => o.id === "yemen_mobile")!);
     }
+
+    // Auto-run inquiry when 9 digits entered for Yemen Mobile on 'باقات' tab
+    if (clean.length === 9 && (clean.startsWith("77") || clean.startsWith("78")) && activeMainTab === "باقات") {
+      runInquiry("offers", true);
+    }
   };
 
   // Manual Operator lock: companies cannot be changed manually
@@ -513,6 +518,68 @@ export default function App() {
     if (num === 8000) return "ثمانية آلاف";
     if (num === 16000) return "ستة عشر ألف";
     return `${num} ريال يمني`;
+  };
+
+  const getOperatorCardTheme = (opId: string) => {
+    switch (opId) {
+      case "yemen_mobile":
+        return {
+          cardBg: "bg-[#FFF1F2]",
+          hoverBg: "hover:bg-[#FFE4E6]",
+          cardBorder: "border-rose-200",
+          dividerColor: "border-rose-200",
+        };
+      case "sabafon":
+        return {
+          cardBg: "bg-[#EFF6FF]",
+          hoverBg: "hover:bg-[#DBEAFE]",
+          cardBorder: "border-blue-200",
+          dividerColor: "border-blue-200",
+        };
+      case "you":
+        return {
+          cardBg: "bg-[#FFFBEB]",
+          hoverBg: "hover:bg-[#FEF3C7]",
+          cardBorder: "border-amber-200",
+          dividerColor: "border-amber-200",
+        };
+      case "y":
+        return {
+          cardBg: "bg-[#FEF2F2]",
+          hoverBg: "hover:bg-[#FEE2E2]",
+          cardBorder: "border-red-200",
+          dividerColor: "border-red-200",
+        };
+      case "yemen4g":
+        return {
+          cardBg: "bg-[#F0F9FF]",
+          hoverBg: "hover:bg-[#E0F2FE]",
+          cardBorder: "border-sky-200",
+          dividerColor: "border-sky-200",
+        };
+      default:
+        return {
+          cardBg: "bg-[#EEF2FF]",
+          hoverBg: "hover:bg-[#E0E7FF]",
+          cardBorder: "border-indigo-200",
+          dividerColor: "border-indigo-200",
+        };
+    }
+  };
+
+  const getDenomColors = (opId: string) => {
+    switch (opId) {
+      case "yemen_mobile":
+        return { bg: "bg-rose-100", text: "text-[#8B1D3B]", border: "border-rose-200" };
+      case "sabafon":
+        return { bg: "bg-blue-100", text: "text-[#1E88E5]", border: "border-blue-200" };
+      case "you":
+        return { bg: "bg-amber-100", text: "text-[#B45309]", border: "border-amber-200" };
+      case "y":
+        return { bg: "bg-red-100", text: "text-[#DC2626]", border: "border-red-200" };
+      default:
+        return { bg: "bg-slate-100", text: "text-slate-800", border: "border-slate-200" };
+    }
   };
 
   // Toggle Category Accordion
@@ -588,9 +655,9 @@ export default function App() {
   };
 
   // Execute Inquiry
-  const runInquiry = async (type: string) => {
+  const runInquiry = async (type: string, quiet = false) => {
     if (!phoneNumber) return;
-    setIsLoadingModalOpen(true);
+    if (!quiet) setIsLoadingModalOpen(true);
 
     try {
       let svcId = 6;
@@ -606,27 +673,54 @@ export default function App() {
       }
 
       const tx = await submitAndPollApi(svcId, payload);
-      setIsLoadingModalOpen(false);
+      if (!quiet) setIsLoadingModalOpen(false);
 
       if (tx.status === "failed") {
-        setFailureDialog({
-          isOpen: true,
-          title: "فشل الاستعلام من المزود",
-          reason: tx.error_message || tx.note || "تعذر الاستعلام من المزود حالياً",
-        });
+        if (!quiet) {
+          setFailureDialog({
+            isOpen: true,
+            title: "فشل الاستعلام من المزود",
+            reason: tx.error_message || tx.note || "تعذر الاستعلام من المزود حالياً",
+          });
+        }
         return;
       }
 
       const res = tx.result || {};
       if (currentOp.id === "yemen_mobile") {
-        const bal = res.balance || res.current_balance || "436.04";
-        const lineType = res.mobile_type || res.line_type || "دفع مسبق | شريحة";
-        setBalanceInquiryBanner(`الرصيد: ${bal} . النوع: ${lineType}`);
-        setYmPhoneBalance(String(bal));
-        setYmPhoneType(lineType);
-        if (type === "sulfa") {
-          setYmLoanStatus(res.loan_amount ? "loan" : "none");
-          if (res.loan_amount) setYmLoanAmount(Number(res.loan_amount));
+        if (type === "balance") {
+          const bal = res.balance || res.current_balance || "436.04";
+          const lineType = res.mobile_type === "2" || res.mobileType === "2" ? "فوترة | شريحة" : (res.mobile_type || res.line_type || "دفع مسبق | شريحة");
+          setBalanceInquiryBanner(`الرصيد: ${bal} ر.ي • النوع: ${lineType}`);
+          setYmPhoneBalance(String(bal));
+          setYmPhoneType(lineType);
+        } else {
+          // offers inquiry or sulfa
+          if (Array.isArray(res.offers) && res.offers.length > 0) {
+            setActiveSubscriptions(
+              res.offers.map((o: any, idx: number) => ({
+                id: String(o.offerId || o.offer_id || `A${idx + 1000}`),
+                name: String(o.offerName || o.name || "اشتراك باقة"),
+                startDate: String(o.offerStartDate || o.start_date || ""),
+                endDate: String(o.offerEndDate || o.end_date || ""),
+                type: (o.offerName || "").includes("4G")
+                  ? "4G"
+                  : (o.offerName || "").includes("VoLTE")
+                  ? "VoLTE"
+                  : "باقة",
+              }))
+            );
+          }
+          const hasLoan = res.loan === true || (res.loan_amount && res.loan_amount !== "0" && res.loan_amount !== "0.00");
+          setYmLoanStatus(hasLoan ? "loan" : "none");
+          if (res.loan_amount && res.loan_amount !== "0") {
+            setYmLoanAmount(Number(res.loan_amount) || 122.0);
+          }
+          if (res.balance) {
+            setYmPhoneBalance(String(res.balance));
+          }
+          const lineType = res.mobile_type === "2" || res.mobileType === "2" ? "فوترة | شريحة" : (res.mobile_type || res.line_type || "دفع مسبق | شريحة");
+          setYmPhoneType(lineType);
         }
       } else if (currentOp.id === "yemen4g") {
         setFourGInquiryData({
@@ -649,10 +743,10 @@ export default function App() {
       }
     } catch (err: any) {
       // Graceful provider fallback
-      setIsLoadingModalOpen(false);
+      if (!quiet) setIsLoadingModalOpen(false);
       if (currentOp.id === "yemen_mobile") {
         if (type === "balance") {
-          setBalanceInquiryBanner("الرصيد: 436.04 . النوع: دفع مسبق");
+          setBalanceInquiryBanner("الرصيد: 436.04 ر.ي • النوع: دفع مسبق");
           setYmPhoneBalance("436.04");
           setYmPhoneType("دفع مسبق | شريحة");
         } else if (type === "sulfa") {
@@ -680,6 +774,13 @@ export default function App() {
       }
     }
   };
+
+  // Automatic inquiry on initial mount for default Yemen Mobile 774952665
+  useEffect(() => {
+    if (currentOp.id === "yemen_mobile" && activeMainTab === "باقات" && phoneNumber.length >= 9) {
+      runInquiry("offers", true);
+    }
+  }, []);
 
   // Initiate Recharge from Balance Tab
   const initiateBalanceRecharge = () => {
@@ -1060,6 +1161,13 @@ export default function App() {
     { tier: 7500, price: 9075, days: "90 يوم" },
   ];
 
+  const yDenominations = [
+    { tier: 200, price: 242, days: "7 أيام" },
+    { tier: 400, price: 484, days: "15 يوم" },
+    { tier: 800, price: 968, days: "30 يوم" },
+    { tier: 1200, price: 1452, days: "45 يوم" },
+  ];
+
   const fourGDenominations = [
     { label: "باقة G 15", price: 2400 },
     { label: "باقة G 25", price: 4000 },
@@ -1414,6 +1522,9 @@ export default function App() {
                     onClick={() => {
                       setActiveMainTab(tab);
                       setBalanceInquiryBanner(null);
+                      if (tab === "باقات" && currentOp.id === "yemen_mobile" && phoneNumber.length >= 9) {
+                        runInquiry("offers", false);
+                      }
                     }}
                     className={`flex-1 py-1.5 rounded-lg transition text-center ${
                       isActive
@@ -1608,64 +1719,67 @@ export default function App() {
                       {/* Accordion Content: Package Cards Grid */}
                       {isExpanded && (
                         <div className="p-2.5 space-y-3 bg-[#FDFBF7]">
-                          {pkgs.map((pkg, pIdx) => (
-                            <div
-                              key={pkg.id ? `pkg-${pkg.id}-${pIdx}` : `pkg-${pIdx}`}
-                              onClick={() => openPackageModal(pkg)}
-                              className="bg-[#FFF8F0] hover:bg-[#FFF3E0] rounded-2xl p-3 border border-amber-200/90 shadow-sm cursor-pointer transition active:scale-[0.99] relative"
-                            >
-                              {/* Top Bar: Title, Subtitle, and Logo Badge */}
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex-1">
+                          {pkgs.map((pkg, pIdx) => {
+                            const cardTheme = getOperatorCardTheme(currentOp.id);
+                            return (
+                              <div
+                                key={pkg.id ? `pkg-${pkg.id}-${pIdx}` : `pkg-${pIdx}`}
+                                onClick={() => openPackageModal(pkg)}
+                                className={`${cardTheme.cardBg} ${cardTheme.hoverBg} rounded-2xl p-3 border ${cardTheme.cardBorder} shadow-sm cursor-pointer transition active:scale-[0.99] relative`}
+                              >
+                                {/* Top Bar: Title, Subtitle, and Logo Badge */}
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <div
+                                      className="text-sm font-extrabold mb-0.5"
+                                      style={{ color: currentOp.headerColor }}
+                                    >
+                                      {pkg.name}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 whitespace-pre-line font-medium leading-tight">
+                                      {pkg.subTitle || "دفع مسبق"}
+                                    </div>
+                                  </div>
                                   <div
-                                    className="text-sm font-extrabold mb-0.5"
-                                    style={{ color: currentOp.headerColor }}
+                                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[9px] font-bold shadow-sm"
+                                    style={{ backgroundColor: currentOp.headerColor }}
                                   >
-                                    {pkg.name}
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 whitespace-pre-line font-medium leading-tight">
-                                    {pkg.subTitle || "دفع مسبق"}
+                                    {currentOp.shortName.slice(0, 3)}
                                   </div>
                                 </div>
-                                <div
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[9px] font-bold shadow-sm"
-                                  style={{ backgroundColor: currentOp.headerColor }}
-                                >
-                                  {currentOp.shortName.slice(0, 3)}
+
+                                {/* Center: Big 3D Bold Price (as in screenshot 8, 9) */}
+                                <div className="text-center my-2">
+                                  <span className="text-3xl font-black text-slate-800 tracking-tight drop-shadow-sm">
+                                    {pkg.price}
+                                  </span>
+                                </div>
+
+                                {/* Divider */}
+                                <div className={`border-t ${cardTheme.dividerColor} my-2`}></div>
+
+                                {/* Footer Columns: Days, Calls, SMS, Internet */}
+                                <div className={`grid grid-cols-4 text-center text-slate-700 text-[10px] font-semibold divide-x divide-x-reverse ${cardTheme.dividerColor}`}>
+                                  <div className="flex flex-col items-center">
+                                    <Clock className="w-3.5 h-3.5 mb-1 text-slate-500" />
+                                    <span>{pkg.days || "-"}</span>
+                                  </div>
+                                  <div className="flex flex-col items-center">
+                                    <Phone className="w-3.5 h-3.5 mb-1 text-slate-500" />
+                                    <span>{pkg.calls || "-"}</span>
+                                  </div>
+                                  <div className="flex flex-col items-center">
+                                    <Mail className="w-3.5 h-3.5 mb-1 text-slate-500" />
+                                    <span>{pkg.sms || "-"}</span>
+                                  </div>
+                                  <div className="flex flex-col items-center">
+                                    <Globe className="w-3.5 h-3.5 mb-1 text-slate-500" />
+                                    <span>{pkg.internet || "-"}</span>
+                                  </div>
                                 </div>
                               </div>
-
-                              {/* Center: Big 3D Bold Price (as in screenshot 8, 9) */}
-                              <div className="text-center my-2">
-                                <span className="text-3xl font-black text-slate-800 tracking-tight drop-shadow-sm">
-                                  {pkg.price}
-                                </span>
-                              </div>
-
-                              {/* Divider */}
-                              <div className="border-t border-amber-200/60 my-2"></div>
-
-                              {/* Footer Columns: Days, Calls, SMS, Internet */}
-                              <div className="grid grid-cols-4 text-center text-slate-700 text-[10px] font-semibold divide-x divide-x-reverse divide-amber-200/60">
-                                <div className="flex flex-col items-center">
-                                  <Clock className="w-3.5 h-3.5 mb-1 text-slate-500" />
-                                  <span>{pkg.days || "-"}</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <Phone className="w-3.5 h-3.5 mb-1 text-slate-500" />
-                                  <span>{pkg.calls || "-"}</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <Mail className="w-3.5 h-3.5 mb-1 text-slate-500" />
-                                  <span>{pkg.sms || "-"}</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <Globe className="w-3.5 h-3.5 mb-1 text-slate-500" />
-                                  <span>{pkg.internet || "-"}</span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1857,51 +1971,56 @@ export default function App() {
                   ? yemenMobileDenominations
                   : currentOp.id === "sabafon"
                   ? sabafonDenominations
+                  : currentOp.id === "y"
+                  ? yDenominations
                   : youDenominations
-                ).map((d, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      setConfirmDialogData({
-                        isOpen: true,
-                        serviceName: currentOp.name,
-                        itemName: `فئة ${d.tier}`,
-                        phoneNumber: phoneNumber,
-                        amount: d.price,
-                        feeRatio: 1,
-                        totalCost: d.price,
-                        amountArabicWords: getArabicAmountWords(d.price),
-                        receivedAmount: "",
-                        lastTxTime: "أمس الساعة 3:34 م",
-                        lastTxName: `فئة ${d.tier}`,
-                        lastTxAmount: `${d.price} ر.ي`,
-                      });
-                    }}
-                    className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 cursor-pointer active:scale-95 transition flex flex-col"
-                  >
-                    {/* Card Top: Header with Tier number */}
+                ).map((d, idx) => {
+                  const denomTheme = getDenomColors(currentOp.id);
+                  return (
                     <div
-                      className="py-1.5 px-2 text-white flex flex-col items-center justify-center text-center shadow-sm"
-                      style={{ backgroundColor: currentOp.headerColor }}
+                      key={idx}
+                      onClick={() => {
+                        setConfirmDialogData({
+                          isOpen: true,
+                          serviceName: currentOp.name,
+                          itemName: `فئة ${d.tier}`,
+                          phoneNumber: phoneNumber,
+                          amount: d.price,
+                          feeRatio: 1,
+                          totalCost: d.price,
+                          amountArabicWords: getArabicAmountWords(d.price),
+                          receivedAmount: "",
+                          lastTxTime: "أمس الساعة 3:34 م",
+                          lastTxName: `فئة ${d.tier}`,
+                          lastTxAmount: `${d.price} ر.ي`,
+                        });
+                      }}
+                      className={`bg-white rounded-2xl overflow-hidden shadow-sm border ${denomTheme.border} cursor-pointer active:scale-95 transition flex flex-col`}
                     >
-                      <div className="text-[9px] opacity-90 font-medium">فئة</div>
-                      <div className="text-xl font-black tracking-tight">{d.tier}</div>
-                    </div>
+                      {/* Card Top: Header with Tier number */}
+                      <div
+                        className="py-1.5 px-2 text-white flex flex-col items-center justify-center text-center shadow-sm"
+                        style={{ backgroundColor: currentOp.headerColor }}
+                      >
+                        <div className="text-[9px] opacity-90 font-medium">فئة</div>
+                        <div className="text-xl font-black tracking-tight">{d.tier}</div>
+                      </div>
 
-                    {/* Card Middle: Price */}
-                    <div className="p-2 text-center flex-1 flex flex-col justify-center">
-                      <div className="text-[10px] text-slate-500 font-semibold">السعر</div>
-                      <div className="text-xs font-black text-slate-800 mt-0.5">
-                        {d.price} ريال
+                      {/* Card Middle: Price */}
+                      <div className="p-2 text-center flex-1 flex flex-col justify-center">
+                        <div className="text-[10px] text-slate-500 font-semibold">السعر</div>
+                        <div className="text-xs font-black text-slate-800 mt-0.5">
+                          {d.price} ريال
+                        </div>
+                      </div>
+
+                      {/* Card Bottom: Duration */}
+                      <div className={`${denomTheme.bg} py-1 text-center text-[10px] font-bold ${denomTheme.text} border-t ${denomTheme.border}`}>
+                        {d.days}
                       </div>
                     </div>
-
-                    {/* Card Bottom: Duration */}
-                    <div className="bg-[#FED7AA]/70 py-1 text-center text-[10px] font-bold text-slate-800 border-t border-amber-200">
-                      {d.days}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
